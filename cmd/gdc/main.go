@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"github.com/mitchellh/go-homedir"
 	"github.com/wilriker/gdc"
 )
 
@@ -45,7 +46,11 @@ func getOptions() *gdc.Options {
 }
 
 func readAccessToken() string {
-	dat, err := ioutil.ReadFile("./.gdc.conf")
+	h, err := homedir.Dir()
+	if err != nil {
+		panic("Cannot find HOME dir")
+	}
+	dat, err := ioutil.ReadFile(h + "/.gdc.conf")
 	if err != nil {
 		panic(err)
 	}
