@@ -12,9 +12,9 @@ import (
 // Parse all command line flags as well as remaining arguments into a new options struct.
 func getOptions() *gdc.Options {
 	r := flag.Bool("r", false, "Do downloads/uploads recursively")
-	h := flag.Bool("h", false, "Shoe file sizes in human readable format")
+	h := flag.Bool("h", false, "Show file sizes in human readable format.")
 	d := flag.Bool("d", false, "Delete source file(s) after upload/download. Not that folders will NOT be deleted.")
-	v := flag.Bool("v", false, "Verbose output")
+	v := flag.Bool("v", false, "Verbose output.")
 	s := flag.Bool("s", false, "Skip already existing files when download/upload.")
 
 	flag.Parse()
