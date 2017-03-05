@@ -4,38 +4,50 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox"
 	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox/files"
 )
 
+// Lister provides access to file listings
+type Lister struct {
+	Options
+	mu    sync.Mutex
+	paths map[string][]files.IsMetadata
+	wg    sync.WaitGroup
+}
+
+// NewLister creates a new Lister instance
+func NewLister(options *Options) *Lister {
+	return &Lister{
+		Options: *options,
+		paths:   make(map[string][]files.IsMetadata),
+	}
+}
+
 // List files and folders inside the given remote path. This can be recursive depending on the provided Options.
-func List(o *Options) {
-	c := dropbox.Config{Token: o.AccessToken}
+func (l *Lister) List() {
+	c := dropbox.Config{Token: l.AccessToken}
 	dbx := files.New(c)
-	resultMap := make(map[string][]files.IsMetadata)
-	for _, path := range o.Paths {
+	paths := l.Paths
+	if len(paths) == 0 {
+		paths = []string{""}
+	}
+	for _, path := range l.Paths {
+		if path != "" && !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
 		a := files.NewListFolderArg(path)
-		a.Recursive = o.Recursive
+		a.Recursive = l.Recursive
 		r, err := dbx.ListFolder(a)
 		if err != nil {
 			panic(err)
 		} else {
 			for {
-				for _, fi := range r.Entries {
-					var m *files.Metadata
-					switch md := fi.(type) {
-					case *files.FileMetadata:
-						m = &md.Metadata
-					case *files.FolderMetadata:
-						m = &md.Metadata
-					}
-					if path == m.PathDisplay {
-						continue
-					}
-					filePath := getFilePath(m)
-					resultMap[filePath] = append(resultMap[filePath], fi)
-				}
+				l.wg.Add(1)
+				go l.processServerResponse(path, r.Entries)
 				if !r.HasMore {
 					break
 				}
@@ -44,12 +56,41 @@ func List(o *Options) {
 					panic(err)
 				}
 			}
-			print(resultMap, o.Recursive, o.HumanReadable)
+			l.wg.Wait()
+			l.print()
 		}
 	}
 }
 
-func getFilePath(md *files.Metadata) string {
+func (l *Lister) processServerResponse(path string, entries []files.IsMetadata) {
+	for _, fi := range entries {
+		var m *files.Metadata
+		switch md := fi.(type) {
+		case *files.FileMetadata:
+			m = &md.Metadata
+		case *files.FolderMetadata:
+			m = &md.Metadata
+
+			// Also put the folder itself into the map when listing recursive.
+			// In case there are no files in there it would not be listed otherwise
+			if l.Recursive {
+				l.mu.Lock()
+				l.paths[m.PathDisplay] = append(l.paths[m.PathDisplay], nil)
+				l.mu.Unlock()
+			}
+		}
+		if path == m.PathDisplay {
+			continue
+		}
+		filePath := l.getFilePath(m)
+		l.mu.Lock()
+		l.paths[filePath] = append(l.paths[filePath], fi)
+		l.mu.Unlock()
+	}
+	l.wg.Done()
+}
+
+func (l *Lister) getFilePath(md *files.Metadata) string {
 	pd := md.PathDisplay
 	end := len(pd) - len(md.Name) - 1
 	p := pd[:end]
@@ -59,16 +100,17 @@ func getFilePath(md *files.Metadata) string {
 	return p
 }
 
-func print(resultMap map[string][]files.IsMetadata, recursive, humanReadable bool) {
+func (l *Lister) print() {
 	filePaths := make([]string, 0)
-	for filePath := range resultMap {
+	for filePath := range l.paths {
 		filePaths = append(filePaths, filePath)
 	}
 	sort.Strings(filePaths)
 	for _, filePath := range filePaths {
-		mds := resultMap[filePath]
+		mds := l.paths[filePath]
+		// TODO add sorting
 		//sort.Sort(mds)
-		if recursive {
+		if l.Recursive {
 			fmt.Println(filePath + ":")
 		}
 		totalBytes := uint64(0)
@@ -78,22 +120,21 @@ func print(resultMap map[string][]files.IsMetadata, recursive, humanReadable boo
 				totalBytes += m.Size
 			}
 		}
-		fmt.Println("total", convertSize(totalBytes, humanReadable))
+		fmt.Println("total", l.convertSize(totalBytes))
 		for _, md := range mds {
 			switch m := md.(type) {
 			case *files.FolderMetadata:
 				fmt.Println("[d]\t" + m.PathDisplay)
 			case *files.FileMetadata:
-				fmt.Println("[f]\t" + convertSize(m.Size, humanReadable) + "\t" + m.ServerModified.String() + "\t" + m.PathDisplay)
+				fmt.Println("[f]\t" + l.convertSize(m.Size) + "\t" + m.ServerModified.String() + "\t" + m.PathDisplay)
 			}
 		}
 	}
 }
 
-func convertSize(size uint64, humanReadable bool) string {
-	if humanReadable {
+func (l *Lister) convertSize(size uint64) string {
+	if l.HumanReadable {
 		return HumanReadableBytes(size)
-	} else {
-		return strconv.FormatUint(size, 10)
 	}
+	return strconv.FormatUint(size, 10)
 }

@@ -68,7 +68,7 @@ func main() {
 	case "download", "get":
 	case "delete", "rm":
 	case "list", "ls":
-		gdc.List(o)
+		gdc.NewLister(o).List()
 	case "move", "mv":
 	case "copy", "cp":
 	case "mkdir":
