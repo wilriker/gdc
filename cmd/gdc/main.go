@@ -3,19 +3,26 @@ package main
 import (
 	"flag"
 	"io/ioutil"
+	"os/user"
 	"strings"
 
-	"github.com/mitchellh/go-homedir"
 	"github.com/wilriker/gdc"
 )
 
 // Parse all command line flags as well as remaining arguments into a new options struct.
 func getOptions() *gdc.Options {
-	r := flag.Bool("r", false, "Do downloads/uploads recursively")
-	h := flag.Bool("h", false, "Show file sizes in human readable format.")
-	d := flag.Bool("d", false, "Delete source file(s) after upload/download. Not that folders will NOT be deleted.")
-	v := flag.Bool("v", false, "Verbose output.")
-	s := flag.Bool("s", false, "Skip already existing files when download/upload.")
+	o := &gdc.Options{}
+
+	flag.BoolVar(&o.Recursive, "r", false, "Do downloads/uploads recursively")
+	flag.BoolVar(&o.Recursive, "recursive", false, "Do downloads/uploads recursively")
+	flag.BoolVar(&o.HumanReadable, "h", false, "Show file sizes in human readable format.")
+	flag.BoolVar(&o.HumanReadable, "human-readable", false, "Show file sizes in human readable format.")
+	flag.BoolVar(&o.Delete, "d", false, "Delete source file(s) after upload/download. Not that folders will NOT be deleted.")
+	flag.BoolVar(&o.Delete, "delete", false, "Delete source file(s) after upload/download. Not that folders will NOT be deleted.")
+	flag.BoolVar(&o.Verbose, "v", false, "Verbose output.")
+	flag.BoolVar(&o.Verbose, "verbose", false, "Verbose output.")
+	flag.BoolVar(&o.Skip, "s", false, "Skip already existing files when download/upload.")
+	flag.BoolVar(&o.Skip, "skip", false, "Skip already existing files when download/upload.")
 
 	flag.Parse()
 
@@ -25,31 +32,23 @@ func getOptions() *gdc.Options {
 	if len(a) < 1 {
 		panic("No command given")
 	}
-	c := flag.Arg(0)
+	o.Command = flag.Arg(0)
 
-	var p []string
 	if len(a) > 1 {
-		p = a[1:]
+		o.Paths = a[1:]
 	}
 
-	at := readAccessToken()
+	o.AccessToken = readAccessToken()
 
-	return &gdc.Options{
-		Recursive:     *r,
-		HumanReadable: *h,
-		Delete:        *d,
-		Verbose:       *v,
-		Skip:          *s,
-		AccessToken:   at,
-		Command:       c,
-		Paths:         p}
+	return o
 }
 
 func readAccessToken() string {
-	h, err := homedir.Dir()
+	u, err := user.Current()
 	if err != nil {
-		panic("Cannot find HOME dir")
+		panic(err)
 	}
+	h := u.HomeDir
 	dat, err := ioutil.ReadFile(h + "/.gdc.conf")
 	if err != nil {
 		panic(err)
@@ -65,13 +64,13 @@ func main() {
 	}
 
 	switch o.Command {
-	case "upload":
-	case "download":
-	case "delete":
-	case "list":
+	case "upload", "put":
+	case "download", "get":
+	case "delete", "rm":
+	case "list", "ls":
 		gdc.List(o)
-	case "move":
-	case "copy":
+	case "move", "mv":
+	case "copy", "cp":
 	case "mkdir":
 	case "share":
 	case "info":
