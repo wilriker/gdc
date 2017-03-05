@@ -11,11 +11,41 @@ import (
 	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox/files"
 )
 
+type sortableMetadata []files.IsMetadata
+
+func (slice sortableMetadata) Len() int {
+	return len(slice)
+}
+
+func (slice sortableMetadata) Less(i, j int) bool {
+	m1 := slice[i]
+	m2 := slice[j]
+	switch m1t := m1.(type) {
+	case *files.FolderMetadata:
+		switch m2t := m2.(type) {
+		case *files.FolderMetadata:
+			return strings.Compare(m1t.Name, m2t.Name) < 0
+		}
+		return true
+	case *files.FileMetadata:
+		switch m2t := m2.(type) {
+		case *files.FileMetadata:
+			return strings.Compare(m1t.Name, m2t.Name) < 0
+		}
+		return false
+	}
+	return false
+}
+
+func (slice sortableMetadata) Swap(i, j int) {
+	slice[i], slice[j] = slice[j], slice[i]
+}
+
 // Lister provides access to file listings
 type Lister struct {
 	Options
 	mu    sync.Mutex
-	paths map[string][]files.IsMetadata
+	paths map[string]sortableMetadata
 	wg    sync.WaitGroup
 }
 
@@ -23,7 +53,7 @@ type Lister struct {
 func NewLister(options *Options) *Lister {
 	return &Lister{
 		Options: *options,
-		paths:   make(map[string][]files.IsMetadata),
+		paths:   make(map[string]sortableMetadata),
 	}
 }
 
@@ -108,8 +138,7 @@ func (l *Lister) print() {
 	sort.Strings(filePaths)
 	for _, filePath := range filePaths {
 		mds := l.paths[filePath]
-		// TODO add sorting
-		//sort.Sort(mds)
+		sort.Sort(mds)
 		if l.Recursive {
 			fmt.Println(filePath + ":")
 		}
