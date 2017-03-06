@@ -76,6 +76,7 @@ func main() {
 		gdc.NewFileUtil(o).Do()
 	case "share":
 	case "info":
+		gdc.NewInfo(o).FetchAndDisplay()
 	default:
 		panic("Unsupported command given: " + o.Command)
 	}
