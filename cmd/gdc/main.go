@@ -66,6 +66,7 @@ func main() {
 
 	switch o.Command {
 	case "upload", "put":
+		gdc.NewUploader(o).Upload()
 	case "download", "get":
 		gdc.NewDownloader(o).Download()
 	case "delete", "rm":
