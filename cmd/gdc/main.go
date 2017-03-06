@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"strings"
 
+	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox"
 	"github.com/wilriker/gdc"
 )
 
@@ -38,7 +39,11 @@ func getOptions() *gdc.Options {
 		o.Paths = a[1:]
 	}
 
-	o.AccessToken = readAccessToken()
+	t := readAccessToken()
+	if t == "" {
+		panic("Access Token must be present")
+	}
+	o.Config = dropbox.Config{Token: t}
 
 	return o
 }
@@ -59,19 +64,16 @@ func readAccessToken() string {
 func main() {
 	o := getOptions()
 
-	if o.AccessToken == "" {
-		panic("Access Token must be present")
-	}
-
 	switch o.Command {
 	case "upload", "put":
 	case "download", "get":
+		gdc.NewDownloader(o).Download()
 	case "delete", "rm":
+		gdc.NewDeleter(o).Delete()
 	case "list", "ls":
 		gdc.NewLister(o).List()
-	case "move", "mv":
-	case "copy", "cp":
-	case "mkdir":
+	case "move", "mv", "copy", "cp", "mkdir":
+		gdc.NewFileUtil(o).Do()
 	case "share":
 	case "info":
 	default:

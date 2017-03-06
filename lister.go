@@ -2,12 +2,12 @@ package gdc
 
 import (
 	"fmt"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox"
 	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox/files"
 )
 
@@ -47,6 +47,7 @@ type Lister struct {
 	mu    sync.Mutex
 	paths map[string]sortableMetadata
 	wg    sync.WaitGroup
+	dbx   files.Client
 }
 
 // NewLister creates a new Lister instance
@@ -54,13 +55,12 @@ func NewLister(options *Options) *Lister {
 	return &Lister{
 		Options: *options,
 		paths:   make(map[string]sortableMetadata),
+		dbx:     files.New(options.Config),
 	}
 }
 
 // List files and folders inside the given remote path. This can be recursive depending on the provided Options.
 func (l *Lister) List() {
-	c := dropbox.Config{Token: l.AccessToken}
-	dbx := files.New(c)
 	paths := l.Paths
 	if len(paths) == 0 {
 		paths = []string{""}
@@ -69,19 +69,24 @@ func (l *Lister) List() {
 		if path != "" && !strings.HasPrefix(path, "/") {
 			path = "/" + path
 		}
+
+		if l.Verbose {
+			fmt.Println("Listing files in", path, "(recursively: ", l.Recursive, ")")
+		}
+
 		a := files.NewListFolderArg(path)
 		a.Recursive = l.Recursive
-		r, err := dbx.ListFolder(a)
+		r, err := l.dbx.ListFolder(a)
 		if err != nil {
 			panic(err)
 		} else {
-			for {
+			for len(r.Entries) > 0 {
 				l.wg.Add(1)
 				go l.processServerResponse(path, r.Entries)
 				if !r.HasMore {
 					break
 				}
-				r, err = dbx.ListFolderContinue(files.NewListFolderContinueArg(r.Cursor))
+				r, err = l.dbx.ListFolderContinue(files.NewListFolderContinueArg(r.Cursor))
 				if err != nil {
 					panic(err)
 				}
@@ -112,7 +117,7 @@ func (l *Lister) processServerResponse(path string, entries []files.IsMetadata) 
 		if path == m.PathDisplay {
 			continue
 		}
-		filePath := l.getFilePath(m)
+		filePath := l.extractPath(m)
 		l.mu.Lock()
 		l.paths[filePath] = append(l.paths[filePath], fi)
 		l.mu.Unlock()
@@ -120,11 +125,9 @@ func (l *Lister) processServerResponse(path string, entries []files.IsMetadata) 
 	l.wg.Done()
 }
 
-func (l *Lister) getFilePath(md *files.Metadata) string {
-	pd := md.PathDisplay
-	end := len(pd) - len(md.Name) - 1
-	p := pd[:end]
-	if p == "" {
+func (l *Lister) extractPath(md *files.Metadata) string {
+	p := path.Dir(md.PathDisplay)
+	if p == "." {
 		return "/"
 	}
 	return p

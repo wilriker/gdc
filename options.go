@@ -1,5 +1,7 @@
 package gdc
 
+import "github.com/dropbox/dropbox-sdk-go-unofficial/dropbox"
+
 // Options is the struct that holds all command line arguments plus the accessToken
 type Options struct {
 	Recursive     bool
@@ -7,7 +9,7 @@ type Options struct {
 	Delete        bool
 	Verbose       bool
 	Skip          bool
-	AccessToken   string
 	Command       string
 	Paths         []string
+	Config        dropbox.Config
 }
