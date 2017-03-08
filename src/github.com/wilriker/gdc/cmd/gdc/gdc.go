@@ -23,7 +23,7 @@ func getOptions() *gdc.Options {
 	flag.BoolVar(&o.Verbose, "v", false, "Verbose output.")
 	flag.BoolVar(&o.Verbose, "verbose", false, "Verbose output.")
 	flag.BoolVar(&o.Skip, "s", false, "Skip already existing files when download/upload.")
-	flag.BoolVar(&o.Skip, "skip", false, "Skip already existing files when download/upload.")
+	flag.BoolVar(&o.Skip, "skip-existing", false, "Skip already existing files when download/upload.")
 
 	flag.Parse()
 
