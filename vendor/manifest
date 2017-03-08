@@ -1,0 +1,31 @@
+{
+	"version": 0,
+	"dependencies": [
+		{
+			"importpath": "code.cloudfoundry.org/bytefmt",
+			"repository": "https://github.com/cloudfoundry/bytefmt",
+			"revision": "a75017a21993c80187c7fa4f3c1ec22ddd6a8cd5",
+			"branch": "master"
+		},
+		{
+			"importpath": "github.com/dropbox/dropbox-sdk-go-unofficial/dropbox",
+			"repository": "https://github.com/dropbox/dropbox-sdk-go-unofficial",
+			"revision": "286be4a1ac31ace0a45adea07a8a3a7ad9de7549",
+			"branch": "master",
+			"path": "/dropbox"
+		},
+		{
+			"importpath": "golang.org/x/net/context",
+			"repository": "https://go.googlesource.com/net",
+			"revision": "7bf7a75e312ea2853f1050e8b1057b4949f90010",
+			"branch": "master",
+			"path": "/context"
+		},
+		{
+			"importpath": "golang.org/x/oauth2",
+			"repository": "https://go.googlesource.com/oauth2",
+			"revision": "efb10a30610e617dbb17fc243f4cc61a8cfa2903",
+			"branch": "master"
+		}
+	]
+}

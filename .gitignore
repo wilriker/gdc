@@ -1,2 +1,4 @@
 main
 Session.vim
+bin/
+pkg/
