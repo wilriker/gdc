@@ -65,7 +65,7 @@ func (l *Lister) List() {
 	if len(paths) == 0 {
 		paths = []string{""}
 	}
-	for _, path := range l.Paths {
+	for _, path := range paths {
 		if path != "" && !strings.HasPrefix(path, "/") {
 			path = "/" + path
 		}
