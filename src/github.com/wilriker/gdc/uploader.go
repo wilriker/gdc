@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox/files"
 )
@@ -24,6 +25,7 @@ type Uploader struct {
 	lister  *Lister
 	sources []string
 	dst     string
+	wg      sync.WaitGroup
 }
 
 // NewUploader creates a new Uploader instance
@@ -43,36 +45,53 @@ func (u *Uploader) Upload() {
 		return
 	}
 	dst := FixPath(u.dst)
-	cwd, err := os.Getwd()
+
+	for _, source := range u.sources {
+		u.upload(source, dst)
+	}
+}
+
+func (u *Uploader) upload(source, dst string) {
+	stat, err := os.Stat(source)
 	if err != nil {
 		panic(err)
 	}
-
+	var basePath string
+	if stat.IsDir() {
+		basePath = source
+	} else {
+		basePath = filepath.Dir(source)
+	}
 	filesToUpload := u.filesToUpload()
 
 	for _, file := range filesToUpload {
-		remotePath := strings.Replace(file, cwd, dst[1:], 1)
+		remotePath := FixPath(strings.Replace(file, basePath, dst[1:], 1))
 		if u.skip(remotePath) {
 			continue
 		}
-		if u.Verbose {
-			fmt.Println("Uploading file", file, "to", remotePath)
-		}
-		f, err := os.Open(file)
-		if err != nil {
-			panic(err)
-		}
-		defer f.Close()
-
-		// TODO Do it in parallel as advised by API documentation
-		u.uploadChunked(f, remotePath)
-		if u.Delete {
-			err := os.Remove(file)
+		u.wg.Add(1)
+		go func(file, remotePath string) {
+			if u.Verbose {
+				fmt.Println("Uploading file", file, "to", remotePath)
+			}
+			f, err := os.Open(file)
 			if err != nil {
 				panic(err)
 			}
-		}
+			defer f.Close()
+
+			// TODO Do it in parallel as advised by API documentation
+			u.uploadChunked(f, remotePath)
+			if u.Delete {
+				err := os.Remove(file)
+				if err != nil {
+					panic(err)
+				}
+			}
+			u.wg.Done()
+		}(file, remotePath)
 	}
+	u.wg.Wait()
 }
 
 func (u *Uploader) filesToUpload() []string {
@@ -101,7 +120,7 @@ func (u *Uploader) files(path string) []string {
 			panic(err)
 		}
 		for _, fi := range f {
-			paths := u.files(fi.Name())
+			paths := u.files(filepath.Join(path, fi.Name()))
 			files = append(files, paths...)
 		}
 	}
@@ -113,10 +132,7 @@ func (u *Uploader) uploadChunked(f io.Reader, remotePath string) {
 	r := bufio.NewReaderSize(f, fourMB)
 
 	n, err := r.Read(buffer)
-	if n <= 0 {
-		return
-	}
-	if err != nil {
+	if err != nil && err != io.EOF {
 		panic(err)
 	}
 	res, err := u.dbx.UploadSessionStart(
