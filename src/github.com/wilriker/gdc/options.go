@@ -8,7 +8,7 @@ type Options struct {
 	HumanReadable bool
 	Delete        bool
 	Verbose       bool
-	Skip          bool
+	SkipExisting  bool
 	Command       string
 	Paths         []string
 	Config        dropbox.Config

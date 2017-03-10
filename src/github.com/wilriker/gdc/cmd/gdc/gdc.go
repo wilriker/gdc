@@ -22,8 +22,8 @@ func getOptions() *gdc.Options {
 	flag.BoolVar(&o.Delete, "delete", false, "Delete source file(s) after upload/download. Not that folders will NOT be deleted.")
 	flag.BoolVar(&o.Verbose, "v", false, "Verbose output.")
 	flag.BoolVar(&o.Verbose, "verbose", false, "Verbose output.")
-	flag.BoolVar(&o.Skip, "s", false, "Skip already existing files when download/upload.")
-	flag.BoolVar(&o.Skip, "skip-existing", false, "Skip already existing files when download/upload.")
+	flag.BoolVar(&o.SkipExisting, "s", false, "Skip already existing files when download/upload.")
+	flag.BoolVar(&o.SkipExisting, "skip-existing", false, "Skip already existing files when download/upload.")
 
 	flag.Parse()
 

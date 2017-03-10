@@ -21,6 +21,7 @@ const (
 type Uploader struct {
 	Options
 	dbx     files.Client
+	lister  *Lister
 	sources []string
 	dst     string
 }
@@ -30,6 +31,7 @@ func NewUploader(o *Options) *Uploader {
 	return &Uploader{
 		Options: *o,
 		dbx:     files.New(o.Config),
+		lister:  NewLister(o),
 		sources: o.Paths[:len(o.Paths)-1],
 		dst:     o.Paths[len(o.Paths)-1],
 	}
@@ -76,32 +78,34 @@ func (u *Uploader) Upload() {
 func (u *Uploader) filesToUpload() []string {
 	var filesToUpload []string
 	for _, path := range u.sources {
-		s, err := os.Stat(path)
+		filesToUpload = append(filesToUpload, u.files(path)...)
+	}
+	return filesToUpload
+}
+
+func (u *Uploader) files(path string) []string {
+	var files []string
+	s, err := os.Stat(path)
+	if err != nil {
+		panic(err)
+	}
+	if s.Mode().IsRegular() {
+		absolutePath, err := filepath.Abs(path)
 		if err != nil {
 			panic(err)
 		}
-		if s.Mode().IsRegular() {
-			absolutePath, err := filepath.Abs(path)
-			if err != nil {
-				panic(err)
-			}
-			filesToUpload = append(filesToUpload, absolutePath)
-		} else if s.IsDir() {
-			f, err := ioutil.ReadDir(path)
-			if err != nil {
-				panic(err)
-			}
-			// TODO Recursive directory walking
-			for _, fi := range f {
-				absolutePath, err := filepath.Abs(fi.Name())
-				if err != nil {
-					panic(err)
-				}
-				filesToUpload = append(filesToUpload, absolutePath)
-			}
+		return []string{absolutePath}
+	} else if s.IsDir() {
+		f, err := ioutil.ReadDir(path)
+		if err != nil {
+			panic(err)
+		}
+		for _, fi := range f {
+			paths := u.files(fi.Name())
+			files = append(files, paths...)
 		}
 	}
-	return filesToUpload
+	return files
 }
 
 func (u *Uploader) uploadChunked(f io.Reader, remotePath string) {
@@ -152,11 +156,8 @@ func (u *Uploader) uploadChunked(f io.Reader, remotePath string) {
 }
 
 func (u *Uploader) skip(path string) bool {
-	if u.Skip {
-		md, err := u.dbx.GetMetadata(files.NewGetMetadataArg(path))
-		if err != nil {
-			panic(err)
-		}
+	if u.SkipExisting {
+		md := u.lister.GetMetadata(path)
 		switch md.(type) {
 		case *files.FileMetadata, *files.FolderMetadata:
 			if u.Verbose {

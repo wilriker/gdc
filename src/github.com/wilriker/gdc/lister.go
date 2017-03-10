@@ -11,13 +11,14 @@ import (
 	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox/files"
 )
 
-type sortableMetadata []files.IsMetadata
+// SortableMetadata puts sort.Interface on files.IsMetadata
+type SortableMetadata []files.IsMetadata
 
-func (slice sortableMetadata) Len() int {
+func (slice SortableMetadata) Len() int {
 	return len(slice)
 }
 
-func (slice sortableMetadata) Less(i, j int) bool {
+func (slice SortableMetadata) Less(i, j int) bool {
 	m1 := slice[i]
 	m2 := slice[j]
 	switch m1t := m1.(type) {
@@ -37,7 +38,7 @@ func (slice sortableMetadata) Less(i, j int) bool {
 	return false
 }
 
-func (slice sortableMetadata) Swap(i, j int) {
+func (slice SortableMetadata) Swap(i, j int) {
 	slice[i], slice[j] = slice[j], slice[i]
 }
 
@@ -45,7 +46,7 @@ func (slice sortableMetadata) Swap(i, j int) {
 type Lister struct {
 	Options
 	mu    sync.Mutex
-	paths map[string]sortableMetadata
+	paths map[string]SortableMetadata
 	wg    sync.WaitGroup
 	dbx   files.Client
 }
@@ -54,7 +55,7 @@ type Lister struct {
 func NewLister(options *Options) *Lister {
 	return &Lister{
 		Options: *options,
-		paths:   make(map[string]sortableMetadata),
+		paths:   make(map[string]SortableMetadata),
 		dbx:     files.New(options.Config),
 	}
 }
@@ -66,35 +67,45 @@ func (l *Lister) List() {
 		paths = []string{""}
 	}
 	for _, path := range paths {
-		if path != "" && !strings.HasPrefix(path, "/") {
-			path = "/" + path
-		}
-
 		if l.Verbose {
 			fmt.Println("Listing files in", path, "(recursively: ", l.Recursive, ")")
 		}
+		l.GetListing(path)
+		l.print()
+	}
+}
 
-		a := files.NewListFolderArg(path)
-		a.Recursive = l.Recursive
-		r, err := l.dbx.ListFolder(a)
+// GetMetadata fetches metadata for a path
+func (l *Lister) GetMetadata(path string) files.IsMetadata {
+	md, err := l.dbx.GetMetadata(files.NewGetMetadataArg(FixPath(path)))
+	if err != nil {
+		panic(err)
+	}
+	return md
+}
+
+// GetListing fetches the listing from Dropbox
+func (l *Lister) GetListing(path string) map[string]SortableMetadata {
+	path = FixPath(path)
+	a := files.NewListFolderArg(path)
+	a.Recursive = l.Recursive
+	r, err := l.dbx.ListFolder(a)
+	if err != nil {
+		panic(err)
+	}
+	for len(r.Entries) > 0 {
+		l.wg.Add(1)
+		go l.processServerResponse(path, r.Entries)
+		if !r.HasMore {
+			break
+		}
+		r, err = l.dbx.ListFolderContinue(files.NewListFolderContinueArg(r.Cursor))
 		if err != nil {
 			panic(err)
-		} else {
-			for len(r.Entries) > 0 {
-				l.wg.Add(1)
-				go l.processServerResponse(path, r.Entries)
-				if !r.HasMore {
-					break
-				}
-				r, err = l.dbx.ListFolderContinue(files.NewListFolderContinueArg(r.Cursor))
-				if err != nil {
-					panic(err)
-				}
-			}
-			l.wg.Wait()
-			l.print()
 		}
 	}
+	l.wg.Wait()
+	return l.paths
 }
 
 func (l *Lister) processServerResponse(path string, entries []files.IsMetadata) {

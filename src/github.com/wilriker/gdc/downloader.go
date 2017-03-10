@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dropbox/dropbox-sdk-go-unofficial/dropbox/files"
 )
@@ -15,9 +17,11 @@ import (
 type Downloader struct {
 	Options
 	dbx     files.Client
+	lister  *Lister
 	deleter *Deleter
 	sources []string
 	dst     string
+	wg      sync.WaitGroup
 }
 
 // NewDownloader creates a new Downloader instance
@@ -32,6 +36,7 @@ func NewDownloader(o *Options) *Downloader {
 	return &Downloader{
 		Options: *o,
 		dbx:     files.New(o.Config),
+		lister:  NewLister(o),
 		deleter: deleter,
 		sources: o.Paths[:(len(o.Paths) - 1)],
 		dst:     o.Paths[len(o.Paths)-1],
@@ -52,10 +57,7 @@ func (d *Downloader) download(p string) {
 	if p == "" || p == "/" {
 		d.downloadFolder("", d.dst)
 	} else {
-		md, err := d.dbx.GetMetadata(files.NewGetMetadataArg(p))
-		if err != nil {
-			panic(err)
-		}
+		md := d.lister.GetMetadata(p)
 		switch m := md.(type) {
 		case *files.FolderMetadata:
 			d.downloadFolder(m.PathLower, d.dst)
@@ -66,14 +68,10 @@ func (d *Downloader) download(p string) {
 }
 
 func (d *Downloader) downloadFolder(folder, dstDir string) {
-	a := files.NewListFolderArg(folder)
-	a.Recursive = d.Recursive
-	l, err := d.dbx.ListFolder(a)
-	if err != nil {
-		panic(err)
-	}
-	for len(l.Entries) > 0 {
-		for _, md := range l.Entries {
+	listing := d.lister.GetListing(folder)
+	for _, pathContents := range listing {
+		sort.Sort(pathContents)
+		for _, md := range pathContents {
 			switch m := md.(type) {
 			case *files.FolderMetadata:
 				p := d.getPath(m.PathDisplay, dstDir, folder)
@@ -81,10 +79,10 @@ func (d *Downloader) downloadFolder(folder, dstDir string) {
 				if err != nil {
 					panic(err)
 				}
-				if d.Verbose {
-					fmt.Println("Creating", p)
-				}
 				if !exists {
+					if d.Verbose {
+						fmt.Println("Creating", p)
+					}
 					err := os.MkdirAll(p, 0775)
 					if err != nil {
 						panic(err)
@@ -96,19 +94,16 @@ func (d *Downloader) downloadFolder(folder, dstDir string) {
 				if err != nil {
 					panic(err)
 				}
-				// TODO Check if exists but is a Dir?
-				if !d.Skip || !exists {
-					d.downloadFile(m, p)
+				if !exists || !d.SkipExisting {
+					d.wg.Add(1)
+					go func() {
+						d.downloadFile(m, p)
+						d.wg.Done()
+					}()
 				}
 			}
 		}
-		if !l.HasMore {
-			break
-		}
-		l, err = d.dbx.ListFolderContinue(files.NewListFolderContinueArg(l.Cursor))
-		if err != nil {
-			panic(err)
-		}
+		d.wg.Wait()
 	}
 }
 
@@ -133,8 +128,13 @@ func (d *Downloader) downloadFile(m *files.FileMetadata, file string) {
 	defer f.Close()
 	w := bufio.NewWriter(f)
 
-	io.Copy(w, r)
-	w.Flush()
+	_, err = io.Copy(w, r)
+	if err != nil {
+		panic(err)
+	}
+	if err := w.Flush(); err != nil {
+		panic(err)
+	}
 
 	if d.deleter != nil {
 		d.deleter.DeleteFile(m)
